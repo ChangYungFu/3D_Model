@@ -2,13 +2,13 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <title>3D 時鐘展示 - 動態背景圖</title>
+  <title>3D 時鐘展示 - 動態背景影片 (修正貼圖格式)</title>
   <style>
-    /* 設定頁面基本樣式，無邊距、全螢幕 canvas */
+    /* 基本樣式，移除邊距讓 canvas 全螢幕呈現 */
     body { margin: 0; }
     canvas { display: block; }
   </style>
-  <!-- 使用 import map 指定 three 模組的來源 -->
+  <!-- 使用 import map 指定 three 模組來源 -->
   <script type="importmap">
   {
     "imports": {
@@ -19,123 +19,114 @@
 </head>
 <body>
   <script type="module">
-    // 引入 Three.js 主要模組
+    // 引入 Three.js 模組
     import * as THREE from 'three';
-    // 引入 GLTFLoader 用於載入 GLB 模型
+    // 引入 GLTFLoader 用於載入 3D 模型
     import { GLTFLoader } from 'https://unpkg.com/three@0.152.2/examples/jsm/loaders/GLTFLoader.js';
-    // 引入 OrbitControls 以提供滑鼠互動控制（旋轉、縮放、平移）
+    // 引入 OrbitControls 用於使用者互動控制
     import { OrbitControls } from 'https://unpkg.com/three@0.152.2/examples/jsm/controls/OrbitControls.js';
 
-    // 宣告全域變數
     let scene, camera, renderer, clockModel;
     let hourHand, minuteHand, secondHand;
     let controls;
 
-    // 執行初始化與動畫循環函式
     init();
     animate();
 
-    // 初始化函式：建立場景、背景、環境貼圖、攝影機、渲染器、控制器、燈光與載入模型
     function init(){
-      // 1. 建立場景
+      // 1. 建立新場景
       scene = new THREE.Scene();
 
-      // 2. 根據螢幕寬高比動態選擇背景圖片
-      // 計算螢幕寬高比
+      // 2. 根據螢幕寬高比決定背景影片 URL
       let aspectRatio = window.innerWidth / window.innerHeight;
-      // 根據寬高比選擇背景圖片 URL
-      let bgURL = "";
-      if(aspectRatio >= 16/9) {
-        // 若螢幕寬高比大於或等於 16:9，則使用 16:9 背景
-        bgURL = "https://changyungfu.github.io/3D_Model/bg_16_9.jpg";
-      } else {
-        // 否則使用 9:16 背景
-        bgURL = "https://changyungfu.github.io/3D_Model/bg_9_16.jpg";
-      }
-      // 利用 TextureLoader 載入背景圖片，並設定為場景背景
-      const textureLoader = new THREE.TextureLoader();
-      scene.background = textureLoader.load(bgURL);
+      let videoURL = (aspectRatio >= 16/9)
+        ? "https://changyungfu.github.io/3D_Model/bg_16_9.mp4"
+        : "https://changyungfu.github.io/3D_Model/bg_9_16.mp4";
 
-      // 3. 載入環境貼圖，僅用於提供反射照明（不作背景顯示）
+      // 3. 建立 HTML video 元素並設定屬性
+      const video = document.createElement('video');
+      video.src = videoURL;              // 指定影片來源
+      video.crossOrigin = 'anonymous';   // 設定跨域以避免 CORS 問題
+      video.loop = true;                 // 循環播放
+      video.muted = true;                // 靜音（自動播放需求）
+      video.playsInline = true;          // 行內播放（行動裝置需求）
+      video.play();                      // 開始播放影片
+
+      // 4. 使用影片建立 VideoTexture
+      const videoTexture = new THREE.VideoTexture(video);
+      // 移除或改用 RGBAFormat 來解決貼圖格式錯誤
+      // videoTexture.format = THREE.RGBFormat; // 原本設定可能導致錯誤
+      videoTexture.format = THREE.RGBAFormat;  // 改為 RGBAFormat 嘗試解決錯誤
+      videoTexture.minFilter = THREE.LinearFilter;
+      videoTexture.magFilter = THREE.LinearFilter;
+      // 將影片貼圖設定為場景背景
+      scene.background = videoTexture;
+
+      // 5. 載入環境貼圖，用於模型材質反射（不作背景顯示）
       const cubeTextureLoader = new THREE.CubeTextureLoader();
       const envMap = cubeTextureLoader.load([
-        'https://threejs.org/examples/textures/cube/Bridge2/posx.jpg', // 正 X 面
-        'https://threejs.org/examples/textures/cube/Bridge2/negx.jpg', // 負 X 面
-        'https://threejs.org/examples/textures/cube/Bridge2/posy.jpg', // 正 Y 面
-        'https://threejs.org/examples/textures/cube/Bridge2/negy.jpg', // 負 Y 面
-        'https://threejs.org/examples/textures/cube/Bridge2/posz.jpg', // 正 Z 面
-        'https://threejs.org/examples/textures/cube/Bridge2/negz.jpg'  // 負 Z 面
+        'https://threejs.org/examples/textures/cube/Bridge2/posx.jpg',
+        'https://threejs.org/examples/textures/cube/Bridge2/negx.jpg',
+        'https://threejs.org/examples/textures/cube/Bridge2/posy.jpg',
+        'https://threejs.org/examples/textures/cube/Bridge2/negy.jpg',
+        'https://threejs.org/examples/textures/cube/Bridge2/posz.jpg',
+        'https://threejs.org/examples/textures/cube/Bridge2/negz.jpg'
       ]);
-      // 將環境貼圖設定到場景，用於材質反射
       scene.environment = envMap;
 
-      // 4. 建立透視攝影機
-      // 參數：視角、長寬比、近剪裁面、遠剪裁面
+      // 6. 建立透視攝影機
       camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 10000);
-      // 設定攝影機位置，確保能夠完整看到模型
       camera.position.set(0, 50, 200);
-      // 指定攝影機的觀看方向朝向原點
       camera.lookAt(0, 0, 0);
 
-      // 5. 建立 WebGL 渲染器
+      // 7. 建立 WebGL 渲染器並設定
       renderer = new THREE.WebGLRenderer({ antialias: true });
-      // 設定渲染器尺寸與視窗一致
       renderer.setSize(window.innerWidth, window.innerHeight);
-      // 設定輸出色彩空間為 sRGB（取代已移除的 outputEncoding）
       renderer.outputColorSpace = THREE.SRGBColorSpace;
-      // 設定色調映射，使用 ACESFilmicToneMapping 提供較真實的亮度與對比效果
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      // 將渲染器的畫布加入到網頁中
       document.body.appendChild(renderer.domElement);
 
-      // 6. 建立 OrbitControls 以提供使用者互動（拖曳、縮放）
+      // 8. 建立 OrbitControls 提供使用者互動
       controls = new OrbitControls(camera, renderer.domElement);
-      // 啟用阻尼效果使控制更平滑
       controls.enableDamping = true;
       controls.dampingFactor = 0.05;
 
-      // 7. 添加燈光
-      // 添加一盞方向光（模擬太陽光），提供主要照明
+      // 9. 添加燈光：方向光與環境光
       const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
       directionalLight.position.set(100, 100, 100);
       scene.add(directionalLight);
-      // 添加環境光，提供全局柔和光照
       scene.add(new THREE.AmbientLight(0x404040));
 
-      // 8. 強迫快取更新：在模型 URL 後加入當前時間戳作為查詢參數
+      // 10. 強迫快取更新：在模型 URL 加上時間戳參數
       const timestamp = new Date().getTime();
       const modelURL = 'https://changyungfu.github.io/3D_Model/小鬧鐘V4.glb?v=' + timestamp;
 
-      // 9. 載入 GLB 模型（包含時鐘本體與指針，節點名稱分別為 hour, minute, second）
+      // 11. 使用 GLTFLoader 載入 GLB 模型
       const loader = new GLTFLoader();
       loader.load(modelURL, gltf => {
-        // 模型載入成功後取得場景
         clockModel = gltf.scene;
-        // 將模型加入到主場景中
         scene.add(clockModel);
 
-        // 假設模型原始單位為公分，縮放比例設為 0.01 轉換為公尺
+        // 12. 調整模型縮放（假設原單位為公分，轉換為公尺用 scale = 0.01）
         clockModel.scale.set(0.01, 0.01, 0.01);
 
-        // 10. 置中模型：計算模型包圍盒以取得中心點，然後調整位置讓模型中心在原點
-        const box = new THREE.Box3().setFromObject(clockModel); // 計算包圍盒
-        const center = new THREE.Vector3(); // 建立向量以儲存中心點
-        box.getCenter(center); // 取得中心點
-        clockModel.position.sub(center); // 調整位置
+        // 13. 置中模型：計算包圍盒中心後移動
+        const box = new THREE.Box3().setFromObject(clockModel);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        clockModel.position.sub(center);
 
-        // 11. 遍歷模型所有子節點，若為 Mesh 且含有材質，則覆寫材質參數以呈現 steel 效果
+        // 14. 遍歷模型所有子節點，調整材質以呈現 steel 效果
         clockModel.traverse(child => {
           if(child.isMesh && child.material) {
-            // 若材質為陣列，逐一處理
             if(Array.isArray(child.material)){
               child.material.forEach(mat => {
-                mat.metalness = 1.0;       // 完全金屬效果
-                mat.roughness = 0.2;         // 較低粗糙度，使反射更明顯
-                mat.envMapIntensity = 1.0;   // 環境貼圖反射強度
-                mat.needsUpdate = true;      // 通知材質更新
+                mat.metalness = 1.0;
+                mat.roughness = 0.2;
+                mat.envMapIntensity = 1.0;
+                mat.needsUpdate = true;
               });
             } else {
-              // 單一材質直接設定
               child.material.metalness = 1.0;
               child.material.roughness = 0.2;
               child.material.envMapIntensity = 1.0;
@@ -144,49 +135,44 @@
           }
         });
 
-        // 12. 取得模型中各指針的節點（請確認節點名稱與模型一致）
+        // 15. 取得模型中指針的節點（請確認節點名稱正確）
         hourHand = clockModel.getObjectByName('hour');
         minuteHand = clockModel.getObjectByName('minute');
         secondHand = clockModel.getObjectByName('second');
 
       }, undefined, error => {
-        // 模型載入失敗時輸出錯誤訊息
         console.error('載入模型錯誤：', error);
       });
 
-      // 13. 當瀏覽器視窗尺寸改變時更新攝影機與渲染器尺寸
+      // 16. 當瀏覽器尺寸改變時更新攝影機與渲染器
       window.addEventListener('resize', onWindowResize, false);
     }
 
-    // 視窗尺寸改變時呼叫此函式以更新攝影機長寬比與渲染器尺寸
+    // 當視窗尺寸改變時更新攝影機與渲染器尺寸
     function onWindowResize(){
-      camera.aspect = window.innerWidth / window.innerHeight;  // 更新攝影機長寬比
-      camera.updateProjectionMatrix();                         // 重新計算攝影機投影矩陣
-      renderer.setSize(window.innerWidth, window.innerHeight);   // 更新渲染器尺寸
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    // 動畫循環函式：持續更新與渲染場景
+    // 動畫循環函式：持續更新場景並渲染
     function animate(){
-      requestAnimationFrame(animate); // 請求下一幀動畫
-      updateClock();                  // 根據當前時間更新指針旋轉
-      controls.update();              // 更新 OrbitControls（含阻尼效果）
-      renderer.render(scene, camera); // 渲染場景
+      requestAnimationFrame(animate);
+      updateClock();
+      controls.update();
+      renderer.render(scene, camera);
     }
 
-    // 根據當前時間更新時鐘指針旋轉角度的函式
+    // 根據系統時間更新時鐘指針旋轉角度
     function updateClock(){
-      if(!clockModel) return; // 模型尚未載入完成則跳過
-      const now = new Date();             // 取得目前系統時間
-      const hours = now.getHours() % 12;    // 12 小時制的時數
-      const minutes = now.getMinutes();     // 分鐘數
-      const seconds = now.getSeconds();     // 秒數
-
-      // 計算指針旋轉角度：小時指針每小時 30°（π/6），分鐘及秒針每分鐘/秒 6°（π/30）
+      if(!clockModel) return; // 模型尚未載入則跳過
+      const now = new Date();
+      const hours = now.getHours() % 12;
+      const minutes = now.getMinutes();
+      const seconds = now.getSeconds();
       const hourAngle = (hours + minutes / 60) * (Math.PI / 6);
       const minuteAngle = (minutes + seconds / 60) * (Math.PI / 30);
       const secondAngle = seconds * (Math.PI / 30);
-
-      // 更新指針旋轉，沿 Z 軸旋轉（使用負值表示逆時針旋轉）
       if(hourHand) hourHand.rotation.z = -hourAngle;
       if(minuteHand) minuteHand.rotation.z = -minuteAngle;
       if(secondHand) secondHand.rotation.z = -secondAngle;
