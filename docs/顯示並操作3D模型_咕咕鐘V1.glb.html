@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>載入咕咕鐘與貓頭鷹模型</title>
+  <style>
+    body { margin: 0; }
+    canvas { display: block; }
+  </style>
+  <!-- 指定 three 模組來源 -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.152.2/build/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'https://unpkg.com/three@0.152.2/examples/jsm/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.152.2/examples/jsm/controls/OrbitControls.js';
+
+    let scene, camera, renderer, controls;
+    // 以陣列儲存所有動畫 mixer
+    let mixers = [];
+    let clockModel, hourHand, minuteHand, secondHand;
+    const clockTime = new THREE.Clock();
+
+    function init() {
+      scene = new THREE.Scene();
+      setupBackgroundVideo();
+      const envMap = loadEnvironmentMap();
+      setupCamera();
+      setupRenderer();
+      setupControls();
+      setupLights();
+
+      // 載入咕咕鐘模型，僅針對材質名稱包含 "copper" 的物件進行貼圖替換與 UV 設定
+      loadGLBModel(envMap);
+      // 載入貓頭鷹模型，保留 GLB 內原始設定
+      loadOwlModel(envMap);
+
+      window.addEventListener('resize', onWindowResize, false);
+    }
+
+    // 根據螢幕比例設定背景影片
+    function setupBackgroundVideo() {
+      const aspectRatio = window.innerWidth / window.innerHeight;
+      const videoURL = (aspectRatio >= 16/9)
+        ? "https://changyungfu.github.io/3D_Model/bg_16_9.mp4"
+        : "https://changyungfu.github.io/3D_Model/bg_9_16.mp4";
+      const video = document.createElement('video');
+      video.src = videoURL;
+      video.crossOrigin = 'anonymous';
+      video.loop = true;
+      video.muted = true;
+      video.playsInline = true;
+      video.play();
+      const videoTexture = new THREE.VideoTexture(video);
+      videoTexture.format = THREE.RGBAFormat;
+      videoTexture.minFilter = THREE.LinearFilter;
+      videoTexture.magFilter = THREE.LinearFilter;
+      scene.background = videoTexture;
+    }
+
+    // 載入環境貼圖（用於反射）
+    function loadEnvironmentMap() {
+      const cubeTextureLoader = new THREE.CubeTextureLoader();
+      const envMap = cubeTextureLoader.load([
+        'https://threejs.org/examples/textures/cube/Bridge2/posx.jpg',
+        'https://threejs.org/examples/textures/cube/Bridge2/negx.jpg',
+        'https://threejs.org/examples/textures/cube/Bridge2/posy.jpg',
+        'https://threejs.org/examples/textures/cube/Bridge2/negy.jpg',
+        'https://threejs.org/examples/textures/cube/Bridge2/posz.jpg',
+        'https://threejs.org/examples/textures/cube/Bridge2/negz.jpg'
+      ]);
+      scene.environment = envMap;
+      return envMap;
+    }
+
+    // 建立攝影機
+    function setupCamera() {
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 10000);
+      camera.position.set(0, 50, 200);
+      camera.lookAt(new THREE.Vector3(0, 0, 0));
+    }
+
+    // 建立 WebGL 渲染器
+    function setupRenderer() {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      document.body.appendChild(renderer.domElement);
+    }
+
+    // 建立 OrbitControls
+    function setupControls() {
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+    }
+
+    // 添加燈光
+    function setupLights() {
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+      directionalLight.position.set(100, 100, 100);
+      scene.add(directionalLight);
+      scene.add(new THREE.AmbientLight(0x404040));
+    }
+
+    // 載入咕咕鐘模型，僅針對材質名稱包含 "copper" 的物件進行貼圖替換與 UV 設定
+    function loadGLBModel(envMap) {
+      const modelVersion = "20250325";
+      const modelURL = `https://changyungfu.github.io/3D_Model/咕咕鐘V1.glb?v=${modelVersion}`;
+      const loader = new GLTFLoader();
+      loader.load(modelURL, (gltf) => {
+        clockModel = gltf.scene;
+        scene.add(clockModel);
+
+        // 模型縮放與置中
+        clockModel.scale.set(1, 1, 1);
+        const box = new THREE.Box3().setFromObject(clockModel);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        clockModel.position.sub(center);
+
+        // 載入 copper 貼圖與設定 UV 參數
+        const textureLoader = new THREE.TextureLoader();
+        const copperTexture = textureLoader.load("https://changyungfu.github.io/3D_Model/copper.jpg");
+        copperTexture.wrapS = THREE.RepeatWrapping;
+        copperTexture.wrapT = THREE.RepeatWrapping;
+        copperTexture.repeat.set(2, 2);   // 水平與垂直各重複 2 倍
+        copperTexture.offset.set(0.1, 0);   // 水平方向偏移 0.1
+
+        clockModel.traverse(child => {
+          if (child.isMesh && child.material && child.material.name) {
+            const matName = child.material.name.toLowerCase();
+            if (matName.includes("copper")) {
+              console.log(`【copper 替換】物件「${child.name}」材質「${child.material.name}」`);
+              child.material.map = copperTexture;
+              child.material.envMap = envMap;
+              // 保留 GLB 裡其他材質參數
+              child.material.needsUpdate = true;
+            } else {
+              console.log(`【保留】物件「${child.name}」材質「${child.material.name}」，不改變`);
+            }
+          }
+        });
+
+        // 若咕咕鐘模型有動畫，將 mixer 加入 mixers 陣列中更新
+        if (gltf.animations && gltf.animations.length > 0) {
+          const clockMixer = new THREE.AnimationMixer(clockModel);
+          gltf.animations.forEach(clip => {
+            const action = clockMixer.clipAction(clip);
+            action.play();
+          });
+          mixers.push(clockMixer);
+        }
+      }, undefined, error => {
+        console.error('載入咕咕鐘模型錯誤：', error);
+      });
+    }
+
+    // 載入貓頭鷹模型，採用 GLB 內原始設定
+    function loadOwlModel(envMap) {
+      const modelVersion = "20250325";
+      const modelURL = `https://changyungfu.github.io/3D_Model/owlV1.glb?v=${modelVersion}`;
+      const loader = new GLTFLoader();
+      loader.load(modelURL, (gltf) => {
+        const owlModel = gltf.scene;
+        // 設定貓頭鷹模型的縮放與位置（可依需求調整）
+        owlModel.scale.set(1, 1, 1);
+        owlModel.position.set(0, -10, 45);
+        scene.add(owlModel);
+
+        // 若貓頭鷹模型有動畫，則建立 mixer 並加入更新陣列
+        if (gltf.animations && gltf.animations.length > 0) {
+          const owlMixer = new THREE.AnimationMixer(owlModel);
+          gltf.animations.forEach(clip => {
+            const action = owlMixer.clipAction(clip);
+            action.play();
+          });
+          mixers.push(owlMixer);
+        }
+        console.log(`【owl 模型載入】物件「${owlModel.name}」已加入場景`);
+      }, undefined, error => {
+        console.error('載入 owl 模型錯誤：', error);
+      });
+    }
+
+    // 視窗尺寸變更時更新攝影機與渲染器
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // 根據系統時間更新時鐘指針（若有）
+    function updateClockHands() {
+      if (!clockModel) return;
+      const now = new Date();
+      const hours = now.getHours() % 12;
+      const minutes = now.getMinutes();
+      const seconds = now.getSeconds();
+      const hourAngle = (hours + minutes / 60) * (Math.PI / 6);
+      const minuteAngle = (minutes + seconds / 60) * (Math.PI / 30);
+      const secondAngle = seconds * (Math.PI / 30);
+      if (clockModel.getObjectByName('hour')) clockModel.getObjectByName('hour').rotation.z = -hourAngle;
+      if (clockModel.getObjectByName('minute')) clockModel.getObjectByName('minute').rotation.z = -minuteAngle;
+      if (clockModel.getObjectByName('second')) clockModel.getObjectByName('second').rotation.z = -secondAngle;
+    }
+
+    // 動畫循環，更新 mixers 陣列中的每個 AnimationMixer
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clockTime.getDelta();
+      mixers.forEach(mixer => mixer.update(delta));
+      updateClockHands();
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    init();
+    animate();
+  </script>
+</body>
+</html>
