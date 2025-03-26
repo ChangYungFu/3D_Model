@@ -1,0 +1,3 @@
+c4d-->fbx-->blender-->glb,
+blender Shader Editor 中確認貼圖是否有正確連接到 Base Color
+若沒貼圖，需手動從 Tex資料夾加回來
