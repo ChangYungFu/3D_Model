@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <title>3D 時鐘展示（亮暗模式切換）</title>
+  <title>3D 時鐘展示</title>
   <style>
     body { margin: 0; }
     canvas { display: block; }
@@ -103,7 +103,7 @@
 
       // 載入 3D 時鐘模型
       const loader = new GLTFLoader();
-      const modelURL = 'https://changyungfu.github.io/3D_Model/2D貼圖_3D清晰可見的時鐘面板_簡潔的指針V1.glb';
+       const modelURL = 'https://changyungfu.github.io/3D_Model/2D貼圖_3D清晰可見的時鐘面板_簡潔的指針V1.glb?t=' + Date.now();
 
       loader.load(modelURL, gltf => {
         clockModel = gltf.scene;
