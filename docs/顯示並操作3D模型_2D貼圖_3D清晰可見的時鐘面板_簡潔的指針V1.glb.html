@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>3D 時鐘展示（亮暗模式切換）</title>
+  <style>
+    body { margin: 0; }
+    canvas { display: block; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.152.2/build/three.module.js"
+    }
+  }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.9/build/dat.gui.min.js"></script>
+</head>
+<body>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'https://unpkg.com/three@0.152.2/examples/jsm/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.152.2/examples/jsm/controls/OrbitControls.js';
+
+    let scene, camera, renderer, clockModel;
+    let hourHand, minuteHand, secondHand;
+    let controls, ambientLight, pointLight;
+
+    // 初始設定（包含材質與光源）
+    const defaultSettings = {
+      envIntensity: 0.4,           // 環境貼圖反射強度
+      metalness: 0.36,              // 材質金屬度
+      roughness: 1,              // 材質粗糙度
+      ambientIntensity: 2,       // 環境光強度
+      pointIntensity: 1.5,         // 點光源強度
+      ambientColor: "#ffffff"      // 環境光顏色（可調整）
+    };
+
+    // 複製設定
+    const settings = { ...defaultSettings };
+
+    init();
+    animate();
+
+    function init(){
+      scene = new THREE.Scene();
+
+      // 判斷螢幕比例以切換背景影片
+      const aspectRatio = window.innerWidth / window.innerHeight;
+      const videoURL = (aspectRatio >= 16/9)
+        ? "https://changyungfu.github.io/3D_Model/bg_16_9.mp4"
+        : "https://changyungfu.github.io/3D_Model/bg_9_16.mp4";
+
+      // 建立背景影片紋理
+      const video = document.createElement('video'); // 建立 <video> 元素
+      video.src = videoURL;
+      video.crossOrigin = 'anonymous';
+      video.loop = true;
+      video.muted = true;
+      video.playsInline = true;
+      video.play();
+
+      const videoTexture = new THREE.VideoTexture(video);
+      videoTexture.format = THREE.RGBAFormat;
+      videoTexture.minFilter = THREE.LinearFilter;
+      videoTexture.magFilter = THREE.LinearFilter;
+      scene.background = videoTexture;
+
+      // 載入環境貼圖（用於 PBR 反射）
+      const cubeTextureLoader = new THREE.CubeTextureLoader();
+      const envMap = cubeTextureLoader.load([
+        'https://threejs.org/examples/textures/cube/Park2/posx.jpg',
+        'https://threejs.org/examples/textures/cube/Park2/negx.jpg',
+        'https://threejs.org/examples/textures/cube/Park2/posy.jpg',
+        'https://threejs.org/examples/textures/cube/Park2/negy.jpg',
+        'https://threejs.org/examples/textures/cube/Park2/posz.jpg',
+        'https://threejs.org/examples/textures/cube/Park2/negz.jpg'
+      ]);
+      scene.environment = envMap;
+
+      // 建立相機與渲染器
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 10000);
+      camera.position.set(0, 50, 100);
+      camera.lookAt(0, 0, 0);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.useLegacyLights = false;
+      document.body.appendChild(renderer.domElement);
+
+      // 加入 OrbitControls 控制器
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      // 加入環境光與點光源
+      ambientLight = new THREE.AmbientLight(settings.ambientColor, settings.ambientIntensity);
+      pointLight = new THREE.PointLight(0xffffff, settings.pointIntensity, 1000);
+      pointLight.position.set(100, 100, 200);
+      scene.add(ambientLight, pointLight);
+
+      // 載入 3D 時鐘模型
+      const loader = new GLTFLoader();
+      const modelURL = 'https://changyungfu.github.io/3D_Model/2D貼圖_3D清晰可見的時鐘面板_簡潔的指針V1.glb';
+
+      loader.load(modelURL, gltf => {
+        clockModel = gltf.scene;
+        clockModel.scale.set(0.2, 0.2, 0.2); // 由 cm 縮小為 m
+        scene.add(clockModel);
+
+        // 置中模型並調整相機距離以自動適配
+        const box = new THREE.Box3().setFromObject(clockModel);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        clockModel.position.sub(center);
+
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const fov = camera.fov * (Math.PI / 180);
+        const cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+        camera.position.set(0, 0, cameraZ );
+        camera.lookAt(0, 0, 0);
+        controls.update();
+
+        updateMaterialProperties(); // 套用初始材質設定
+
+        // 取得指針節點名稱（需與模型內部一致）
+        hourHand = clockModel.getObjectByName('hour');
+        minuteHand = clockModel.getObjectByName('minute');
+        secondHand = clockModel.getObjectByName('second');
+      });
+
+      // 視窗尺寸改變時更新攝影機與渲染器
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      setupGUI(); // 建立 GUI 控制面板
+    }
+
+    function animate(){
+      requestAnimationFrame(animate);
+      updateClock(); // 更新指針
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // 根據當前時間更新指針旋轉角度
+    function updateClock(){
+      if(!clockModel) return;
+      const now = new Date();
+      const hours = now.getHours() % 12;
+      const minutes = now.getMinutes();
+      const seconds = now.getSeconds();
+      const hourAngle = (hours + minutes / 60) * (Math.PI / 6);
+      const minuteAngle = (minutes + seconds / 60) * (Math.PI / 30);
+      const secondAngle = seconds * (Math.PI / 30);
+      if(hourHand) hourHand.rotation.z = -hourAngle;
+      if(minuteHand) minuteHand.rotation.z = -minuteAngle;
+      if(secondHand) secondHand.rotation.z = -secondAngle;
+    }
+
+    // 設定控制面板（dat.GUI）
+    function setupGUI(){
+      const gui = new dat.GUI();
+      gui.add(settings, 'envIntensity', 0, 5).step(0.1).name('反射強度').onChange(updateMaterialProperties);
+      gui.add(settings, 'metalness', 0, 1).step(0.01).name('金屬度').onChange(updateMaterialProperties);
+      gui.add(settings, 'roughness', 0, 1).step(0.01).name('粗糙度').onChange(updateMaterialProperties);
+      gui.add(settings, 'ambientIntensity', 0, 5).step(0.1).name('環境光強度').onChange(val => {
+        settings.ambientIntensity = val;
+        ambientLight.intensity = val;
+      });
+      gui.addColor(settings, 'ambientColor').name('環境光顏色').onChange(val => {
+        ambientLight.color.set(val);
+      });
+      gui.add(settings, 'pointIntensity', 0, 5).step(0.1).name('點光源').onChange(val => {
+        settings.pointIntensity = val;
+        pointLight.intensity = val;
+      });
+      gui.add({ reset: () => resetSettings() }, 'reset').name('🔄 重設參數'); // 加入一鍵重設功能
+
+      // 加入點光源位置控制滑桿
+      const lightFolder = gui.addFolder('點光源位置');
+      lightFolder.add(pointLight.position, 'x', -500, 500).step(1).name('X 位置');
+      lightFolder.add(pointLight.position, 'y', -500, 500).step(1).name('Y 位置');
+      lightFolder.add(pointLight.position, 'z', -2500, 2500).step(1).name('Z 位置'); // 加入一鍵重設功能
+      //gui.domElement.style.display = 'none';
+    }
+
+    // 套用材質設定到模型上
+    function updateMaterialProperties(){
+      if(!clockModel) return;
+      clockModel.traverse(child => {
+        if(child.isMesh && child.material){
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          materials.forEach(mat => {
+            mat.metalness = settings.metalness;
+            mat.roughness = settings.roughness;
+            mat.envMapIntensity = settings.envIntensity;
+            mat.needsUpdate = true;
+          });
+        }
+      });
+    }
+
+    // 重設滑桿與材質為預設值
+    function resetSettings(){
+      Object.assign(settings, defaultSettings);
+      ambientLight.intensity = settings.ambientIntensity;
+      ambientLight.color.set(settings.ambientColor);
+      pointLight.intensity = settings.pointIntensity;
+      updateMaterialProperties();
+    }
+  </script>
+</body>
+</html>
