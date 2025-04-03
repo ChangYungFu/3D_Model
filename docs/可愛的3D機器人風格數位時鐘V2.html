@@ -39,8 +39,8 @@
 
     const aspectRatio = window.innerWidth / window.innerHeight;
     const src = aspectRatio >= 1
-      ? "https://changyungfu.github.io/3D_Model/girl16_9.mp4"
-      : "https://changyungfu.github.io/3D_Model/girl9_16.mp4";
+      ? "https://changyungfu.github.io/3D_Model/夢幻之門.mp4"
+      : "https://changyungfu.github.io/3D_Model/銀河時鐘.mp4";
 
     const video = document.createElement("video");
     video.src = src;
@@ -121,7 +121,7 @@
     // 載入 GLB 模型 (內含七段時鐘、RingLed12 與 eye 物件)
     const loader = new GLTFLoader();
     loader.load(
-      "https://changyungfu.github.io/3D_Model/可愛的3D機器人風格數位時鐘V1.glb",
+      "https://changyungfu.github.io/3D_Model/可愛的3D機器人風格數位時鐘V2.glb",
       (gltf) => {
         clockModel = gltf.scene;
         scene.add(clockModel);
