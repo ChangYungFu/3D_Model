@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <title>可愛的3D機器人風格數位時鐘V1（花蓮高工電子科張勇富老師）</title>
+  <title>可愛的3D機器人時鐘（HDMI版有聲+自動播放）</title>
   <style>
     body { margin: 0; overflow: hidden; background-color: #111; }
     canvas {
@@ -13,7 +13,6 @@
       z-index: 0;
       pointer-events: none;
     }
-
   </style>
   <script type="importmap">
     {
@@ -24,141 +23,131 @@
   </script>
 </head>
 <body>
-    <!-- 加入背景影片 -->
-  
+  <div id="video-container" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1;"></div>
 
+  <script>
+    let video;
 
+    function updateVideoSource() {
+      const container = document.getElementById("video-container");
+      container.innerHTML = "";
 
+      const aspectRatio = window.innerWidth / window.innerHeight;
+      const src = aspectRatio >= 1
+        ? "https://changyungfu.github.io/3D_Model/魔幻氣泡.mp4"
+        : "https://changyungfu.github.io/3D_Model/銀河時鐘.mp4";
 
-<div id="video-container" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1;"></div>
+      video = document.createElement("video");
+      video.src = src;
+      video.autoplay = true;
+      video.muted = false;
+      video.loop = true;
+      video.playsInline = true;
+      video.volume = 1.0;
+      video.controls = false;
 
-<script>
-  function updateVideoSource() {
-    const container = document.getElementById("video-container");
-    container.innerHTML = ""; // 清空原本影片
+      Object.assign(video.style, {
+        width: "100vw",
+        height: "100vh",
+        objectFit: "fill",
+      });
 
-    const aspectRatio = window.innerWidth / window.innerHeight;
-    const src = aspectRatio >= 1
-      ? "https://changyungfu.github.io/3D_Model/夢幻之門.mp4"
-      : "https://changyungfu.github.io/3D_Model/銀河時鐘.mp4";
+      container.appendChild(video);
 
-    const video = document.createElement("video");
-    video.src = src;
-    video.autoplay = true;
-    video.muted = true;
-    video.loop = true;
-    video.playsInline = true;
+      // 嘗試播放
+      tryPlayVideo();
+    }
 
-    Object.assign(video.style, {
-      width: "100vw",
-      height: "100vh",
-      objectFit: "fill",
+    function tryPlayVideo() {
+      if (video && video.paused) {
+        video.play().catch(err => {
+          console.warn("播放失敗：", err);
+        });
+      }
+    }
+
+    document.addEventListener("click", tryPlayVideo);
+    window.addEventListener("resize", () => {
+      updateVideoSource();
+      setTimeout(tryPlayVideo, 200);
+    });
+    window.addEventListener("orientationchange", () => {
+      updateVideoSource();
+      setTimeout(tryPlayVideo, 200);
     });
 
-    container.appendChild(video);
-  }
+    updateVideoSource();
+  </script>
 
-  window.addEventListener("resize", updateVideoSource);
-  window.addEventListener("orientationchange", updateVideoSource);
-  updateVideoSource();
-</script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'https://unpkg.com/three@0.152.2/examples/jsm/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.152.2/examples/jsm/controls/OrbitControls.js';
 
+    let scene, camera, renderer, controls, clockModel;
+    let ringLed12, eye;
+    const clock = new THREE.Clock();
 
+    const segmentMap = {
+      0: ['A','B','C','D','E','F'],
+      1: ['B','C'],
+      2: ['A','B','G','E','D'],
+      3: ['A','B','G','C','D'],
+      4: ['F','G','B','C'],
+      5: ['A','F','G','C','D'],
+      6: ['A','F','G','C','D','E'],
+      7: ['A','B','C'],
+      8: ['A','B','C','D','E','F','G'],
+      9: ['A','B','C','D','F','G']
+    };
 
+    init();
+    animate();
 
+    function init() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 0, 400);
 
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      document.body.appendChild(renderer.domElement);
 
-<script type="module">
-  import * as THREE from 'three';
-  import { GLTFLoader } from 'https://unpkg.com/three@0.152.2/examples/jsm/loaders/GLTFLoader.js';
-  import { OrbitControls } from 'https://unpkg.com/three@0.152.2/examples/jsm/controls/OrbitControls.js';
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
 
-  let scene, camera, renderer, controls, clockModel;
-  let ringLed12, eye; // 來自 GLB 模型內的物件
-  const clock = new THREE.Clock();
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+      dirLight.position.set(100, 100, 100);
+      scene.add(dirLight);
+      scene.add(new THREE.AmbientLight(0x404040));
 
-  // 定義每個數字對應的七段顯示
-  const segmentMap = {
-    0: ['A','B','C','D','E','F'],
-    1: ['B','C'],
-    2: ['A','B','G','E','D'],
-    3: ['A','B','G','C','D'],
-    4: ['F','G','B','C'],
-    5: ['A','F','G','C','D'],
-    6: ['A','F','G','C','D','E'],
-    7: ['A','B','C'],
-    8: ['A','B','C','D','E','F','G'],
-    9: ['A','B','C','D','F','G']
-  };
+      const loader = new GLTFLoader();
+      loader.load(
+        "https://changyungfu.github.io/3D_Model/可愛的3D機器人風格數位時鐘V2.glb",
+        (gltf) => {
+          clockModel = gltf.scene;
+          scene.add(clockModel);
+          centerAndScaleModel(clockModel);
 
-  init();
-  animate();
+          const colon1 = clockModel.getObjectByName("colon_1");
+          const colon2 = clockModel.getObjectByName("colon_2");
+          ringLed12 = clockModel.getObjectByName("RingLed12");
+          eye = clockModel.getObjectByName("eye");
 
-  function init() {
-    // 建立場景與相機
-    scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 0, 400);
+          if (colon1) updateColonMaterial(colon1);
+          if (colon2) updateColonMaterial(colon2);
+        },
+        undefined,
+        (error) => console.error("載入錯誤：", error)
+      );
 
-    // 建立渲染器
-     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      window.addEventListener('resize', onWindowResize);
+    }
 
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    document.body.appendChild(renderer.domElement);
-
-    // 加入軌道控制器
-    controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-
-    // 加入光源
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-    dirLight.position.set(100, 100, 100);
-    scene.add(dirLight);
-    const ambientLight = new THREE.AmbientLight(0x404040);
-    scene.add(ambientLight);
-
-    // 載入 GLB 模型 (內含七段時鐘、RingLed12 與 eye 物件)
-    const loader = new GLTFLoader();
-    loader.load(
-      "https://changyungfu.github.io/3D_Model/可愛的3D機器人風格數位時鐘V2.glb",
-      (gltf) => {
-        clockModel = gltf.scene;
-        scene.add(clockModel);
-        centerAndScaleModel(clockModel);
-
-        // 取得 GLB 模型內的物件：colon、RingLed12 與 eye
-        const colon1 = clockModel.getObjectByName("colon_1");
-        const colon2 = clockModel.getObjectByName("colon_2");
-        ringLed12 = clockModel.getObjectByName("RingLed12");
-        eye = clockModel.getObjectByName("eye");
-
-        // 更新 colon 材質 (LED 效果)
-        if (colon1) updateColonMaterial(colon1);
-        if (colon2) updateColonMaterial(colon2);
-      },
-      (xhr) => {
-        console.log(`載入進度：${(xhr.loaded / xhr.total * 100).toFixed(2)}%`);
-      },
-      (error) => {
-        console.error("載入錯誤：", error);
-      }
-    );
-
-    window.addEventListener('resize', onWindowResize);
-  }
-
-  // 更新或設定物件材質參數
-  function updateColonMaterial(object) {
-    object.traverse(child => {
-      if(child.isMesh) {
-        if(child.material) {
-          child.material.color.set(0x00ff00);
-          child.material.emissive = new THREE.Color(0x00ff00);
-          child.material.emissiveIntensity = 1.0;
-          child.material.metalness = 1.0;
-          child.material.roughness = 0.3;
-        } else {
+    function updateColonMaterial(object) {
+      object.traverse(child => {
+        if (child.isMesh) {
           child.material = new THREE.MeshStandardMaterial({
             color: 0x00ff00,
             metalness: 1.0,
@@ -167,58 +156,68 @@
             emissiveIntensity: 1.0
           });
         }
-      }
-    });
-  }
-
-  // 中心化並調整模型大小
-  function centerAndScaleModel(model) {
-    const box = new THREE.Box3().setFromObject(model);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    model.position.sub(center);
-    const scale = 300 / Math.max(size.x, size.y, size.z);
-    model.scale.setScalar(scale);
-    controls.target.set(0, 0, 0);
-    controls.update();
-  }
-
-  // 根據系統時間更新數字顯示
-  function updateDigits() {
-    if (!clockModel) {
-      console.log("模型尚未載入，跳過更新");
-      return;
-    }
-    const now = new Date();
-    const digits = now.toTimeString().slice(0, 8).replace(/:/g, '').split('');
-    digits.forEach((num, i) => {
-      const allSegs = ['A','B','C','D','E','F','G'];
-      allSegs.forEach(seg => {
-        const name = `digit_${i}_seg_${seg}`;
-        const obj = clockModel.getObjectByName(name);
-        if (obj) {
-          const shouldVisible = segmentMap[parseInt(num)].includes(seg);
-          obj.visible = shouldVisible;
-        } else {
-          console.log(`找不到物件：${name}`);
-        }
       });
-    });
-  }
+    }
 
-  // 更新冒號的閃爍效果
-  function updateColons() {
-    if (!clockModel) return;
-    const colon1 = clockModel.getObjectByName("colon_1");
-    const colon2 = clockModel.getObjectByName("colon_2");
-    const now = new Date();
-    const blink = now.getSeconds() % 2 === 0;
-    if (colon1) colon1.visible = blink;
-    if (colon2) colon2.visible = blink;
-  }
+    function centerAndScaleModel(model) {
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      model.position.sub(center);
+      const scale = 300 / Math.max(size.x, size.y, size.z);
+      model.scale.setScalar(scale);
+      controls.target.set(0, 0, 0);
+      controls.update();
+    }
 
-  function animate() {
-    requestAnimationFrame(animate);
+    function updateDigits() {
+      if (!clockModel) return;
+      const now = new Date();
+      const digits = now.toTimeString().slice(0, 8).replace(/:/g, '').split('');
+      digits.forEach((num, i) => {
+        const allSegs = ['A','B','C','D','E','F','G'];
+        allSegs.forEach(seg => {
+          const name = `digit_${i}_seg_${seg}`;
+          const obj = clockModel.getObjectByName(name);
+          if (obj) {
+            obj.visible = segmentMap[parseInt(num)].includes(seg);
+          }
+        });
+      });
+    }
+
+    function updateColons() {
+      if (!clockModel) return;
+      const now = new Date();
+      const blink = now.getSeconds() % 2 === 0;
+      const colon1 = clockModel.getObjectByName("colon_1");
+      const colon2 = clockModel.getObjectByName("colon_2");
+      if (colon1) colon1.visible = blink;
+      if (colon2) colon2.visible = blink;
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      updateDigits();
+      updateColons();
+
+      const delta = clock.getDelta();
+
+      if (ringLed12) ringLed12.rotation.z += THREE.MathUtils.degToRad(120) * delta;
+      if (eye) eye.visible = new Date().getSeconds() % 2 === 0;
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+  </script>
+</body>
+</html>te);
     updateDigits();
     updateColons();
 
